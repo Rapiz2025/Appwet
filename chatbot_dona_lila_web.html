@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Doña Lila Express - Sistema Inteligente</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        @media (max-width: 1023px) {
+            body.mobile-chat-active #chat-section { display: flex; }
+            body.mobile-chat-active #admin-section { display: none; }
+            body.mobile-admin-active #chat-section { display: none; }
+            body.mobile-admin-active #admin-section { display: flex; }
+        }
+    </style>
+</head>
+<body class="bg-slate-100 h-screen w-full flex flex-col overflow-hidden">
+
+    <header class="bg-white shadow-sm h-[70px] flex justify-between items-center px-4 z-20">
+        <h1 class="text-xl font-bold text-slate-800">Doña Lila Express</h1>
+    </header>
+
+    <main class="flex-1 flex flex-row overflow-hidden w-full">
+        <section id="chat-section" class="w-full lg:w-[450px] h-full flex-col border-r bg-white">
+            <div id="chatMessages" class="flex-1 overflow-y-auto p-4 flex flex-col space-y-4"></div>
+
+            <div class="p-3 bg-white border-t flex flex-wrap gap-2">
+                <button onclick="aiAction('sugerir')" class="bg-indigo-500 text-white text-xs px-3 py-2 rounded-lg font-bold shadow-sm hover:bg-indigo-600">✨ Sugerir Maridaje</button>
+                <button onclick="aiAction('resumir')" class="bg-amber-500 text-white text-xs px-3 py-2 rounded-lg font-bold shadow-sm hover:bg-amber-600">✨ Resumir Pedido</button>
+            </div>
+
+            <div class="p-3 bg-slate-100 border-t flex items-center space-x-2">
+                <input type="text" id="userInput" placeholder="Escribe tu mensaje..." class="flex-1 px-4 py-2 rounded-full border">
+                <button onclick="sendMessage()" class="bg-green-500 text-white rounded-full w-10 h-10"><i class="fa-solid fa-paper-plane"></i></button>
+            </div>
+        </section>
+
+        <section id="admin-section" class="hidden lg:flex lg:flex-1 h-full flex-col bg-slate-50 p-6 overflow-y-auto">
+            <h3 class="text-lg font-bold mb-4">Menú del día</h3>
+            <div id="menuContainer" class="bg-white p-4 rounded-xl border text-sm text-slate-600"></div>
+        </section>
+    </main>
+
+    <script>
+        const apiKey = ""; // Set your Gemini API key here
+        const menuData = "Yaroas, Pizzas, Favoritos, Especialidades, Bebidas.";
+        let conversationHistory = [];
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function appendMessage(container, cssClasses, label, text) {
+            const div = document.createElement('div');
+            div.className = cssClasses;
+            div.textContent = `${label}${text}`;
+            container.appendChild(div);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        async function aiAction(type) {
+            const systemPrompt = type === 'sugerir'
+                ? "Basado en el historial, sugiere una bebida o acompañante ideal del menú de Doña Lila. Sé breve."
+                : "Genera un resumen profesional, claro y breve del pedido actual tomado en el historial. Incluye Nombre, Dirección, items y total estimado si aplica.";
+
+            const reply = await callGeminiChatAPI(systemPrompt);
+            appendMessage(
+                document.getElementById('chatMessages'),
+                'text-left bg-purple-100 p-2 rounded-lg border border-purple-200',
+                'Bot (IA): ',
+                reply
+            );
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('userInput');
+            const text = input.value.trim();
+            if (!text) return;
+
+            const chatMessages = document.getElementById('chatMessages');
+            appendMessage(chatMessages, 'text-right bg-green-100 p-2 rounded-lg', 'Tú: ', text);
+            input.value = '';
+
+            const systemPrompt = `Eres asistente de Doña Lila. 1. Pregunta tamaños en Yaroas/Pizzas. 2. Recopila Nombre, Dir, Cambio. 3. Política: No se cancela, solo se añade. 4. Español dominicano amable.`;
+            conversationHistory.push(`Usuario: ${text}`);
+            const reply = await callGeminiChatAPI(systemPrompt);
+            conversationHistory.push(`Bot: ${reply}`);
+            appendMessage(chatMessages, 'text-left bg-slate-200 p-2 rounded-lg', 'Bot: ', reply);
+        }
+
+        async function callGeminiChatAPI(systemPrompt) {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            const payload = {
+                contents: [{
+                    role: "user",
+                    parts: [{ text: `Contexto: ${menuData}\nInstrucciones: ${systemPrompt}\nHistorial: ${conversationHistory.join('\n')}` }]
+                }]
+            };
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await response.json();
+                return data.candidates[0].content.parts[0].text;
+            } catch (e) {
+                return "Error al conectar con la IA.";
+            }
+        }
+
+        window.onload = () => {
+            const container = document.getElementById('menuContainer');
+            menuData.split(',').forEach(item => {
+                const p = document.createElement('p');
+                p.textContent = item.trim();
+                container.appendChild(p);
+            });
+
+            // Allow sending with Enter key
+            document.getElementById('userInput').addEventListener('keydown', e => {
+                if (e.key === 'Enter') sendMessage();
+            });
+        };
+    </script>
+</body>
+</html>
